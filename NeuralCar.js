@@ -587,28 +587,45 @@ SQUARIFIC.Car = function Car (brain, settings) {
 	this.step = function carStep (stepSize, board, cars) {
 		var inputs = brain.getInput(this, board, cars);
 		this.lastVelocity = this.velocity;
-		
+		var nvelocity, nacceleration, nangle;
 		if ((inputs.acceleration !== 1 && inputs.acceleration !== -1) && this.velocity !== 0) {
 			if (this.velocity > 0) {
 				inputs.acceleration = -.4;
 				if (this.velocity + inputs.acceleration * this.maxAcceleration * stepSize < 0) {
-					this.velocity = 0;
+					nvelocity = 0;
 					inputs.acceleration = 0;
 				}
 			} else {
 				inputs.acceleration = .4;
 				if (this.velocity + inputs.acceleration * this.maxAcceleration * stepSize > 0) {
-					this.velocity = 0;
+					nvelocity = 0;
 					inputs.acceleration = 0;
 				}
 			}
 		}
 		
-		this.velocity += inputs.acceleration * this.maxAcceleration * stepSize;
+		nvelocity = this.velocity + inputs.acceleration * this.maxAcceleration * stepSize;
 		
-		this.angle += inputs.turning * this.maxTurnAngle * stepSize;
-		this.angleCos = Math.cos(this.angle);
-		this.angleSin = Math.sin(this.angle);
+		nangle = this.angle + inputs.turning * this.maxTurnAngle * stepSize;
+		var nangleCos,nangleSin;
+		nangleCos = Math.cos(nangle);
+		nangleSin = Math.sin(nangle);
+
+		var nx,ny;
+		nx = this.x + nvelocity * nangleSin * stepSize;
+		ny = this.y - nvelocity * nangleCos * stepSize;
+		
+		nx = board.ensureCoordInRange(nx, board.width);
+		ny = board.ensureCoordInRange(ny, board.height);
+        
+        if (!board.collision(nx, ny, nangle, this, cars)) {
+        	this.x = nx;
+        	this.y = ny;
+        }
+        	this.angle = nangle;
+        	this.angleCos = nangleCos;
+        	this.angleSin = nangleSin;
+        	this.velocity = nvelocity;
 		
 		var average = board.average(this.x, this.y, this.image.width, this.image.height, settings.car.averageWidth, settings.car.averageHeight, this, cars) * this.maxSpeed;
 		if (this.velocity > average) {
@@ -617,17 +634,6 @@ SQUARIFIC.Car = function Car (brain, settings) {
 			this.velocity = -average;
 		}
 		
-		var nx,ny;
-		nx = this.x + this.velocity * this.angleSin * stepSize;
-		ny = this.y - this.velocity * this.angleCos * stepSize;
-		
-		nx = board.ensureCoordInRange(nx, board.width);
-		ny = board.ensureCoordInRange(ny, board.height);
-        
-        if (!board.collision(nx, ny, this, cars)) {
-        	this.x = nx;
-        	this.y = ny;
-        }
 
 		this.score += this.velocity;
 	};
@@ -797,13 +803,15 @@ SQUARIFIC.Board = function Board (board, settings, neuralCarInstance) {
 			new SAT.V((angleCos * -xmodbef) - (angleSin *  ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos *  ymodbef) + ymod)
 		]);
 	};
-	this.collision = function collisionDection(nx, ny, car, cars) {
+	this.collision = function collisionDection(nx, ny, nangle, car, cars) {
 		var xmodbef = car.image.width / 2;
 		var ymodbef = car.image.height / 2;
 		var xmod = nx + xmodbef;
 		var ymod = ny + ymodbef;
+		var nangleCos = Math.cos(nangle);
+		var nangleSin = Math.sin(nangle);
 		// https://github.com/jriecken/sat-js
-		var carPolygon = this.getPolygon(car.angleCos,car.angleSin,xmodbef,ymodbef,xmod,ymod);
+		var carPolygon = this.getPolygon(nangleCos,nangleSin,xmodbef,ymodbef,xmod,ymod);
 		var carslength = cars.length;
 		for (var k = 0; k < carslength; k++) {
 			var angleCos = cars[k].angleCos;
@@ -854,36 +862,8 @@ SQUARIFIC.Board = function Board (board, settings, neuralCarInstance) {
 		}
 		
 		if (settings.collision) {
-			var xmodbef = width / 2;
-			var ymodbef = height / 2;
-			var xmod = xA + xmodbef;
-			var ymod = yA + ymodbef;
-			// https://github.com/jriecken/sat-js
-			var carPolygon = new SAT.Polygon(new SAT.V(0, 0), [
-				new SAT.V((angleCos * -xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos * -ymodbef) + ymod),
-				new SAT.V((angleCos *  xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin *  xmodbef) + (angleCos * -ymodbef) + ymod), 
-				new SAT.V((angleCos *  xmodbef) - (angleSin *  ymodbef) + xmod, (angleSin *  xmodbef) + (angleCos *  ymodbef) + ymod),
-				new SAT.V((angleCos * -xmodbef) - (angleSin *  ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos *  ymodbef) + ymod)
-			]);
-			var carslength = cars.length;
-			for (var k = 0; k < carslength; k++) {
-				var angleCos = cars[k].angleCos;
-				var angleSin = cars[k].angleSin;
-				var xmodbef = cars[k].image.width / 2;
-				var ymodbef = cars[k].image.height / 2;
-				var xmod = cars[k].x + xmodbef;
-				var ymod = cars[k].y + ymodbef;
-				if (cars[k] !== car && SAT.testPolygonPolygon(carPolygon, new SAT.Polygon(new SAT.V(0, 0), [
-					new SAT.V((angleCos * -xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos * -ymodbef) + ymod),
-					new SAT.V((angleCos *  xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin *  xmodbef) + (angleCos * -ymodbef) + ymod), 
-					new SAT.V((angleCos *  xmodbef) - (angleSin *  ymodbef) + xmod, (angleSin *  xmodbef) + (angleCos *  ymodbef) + ymod),
-					new SAT.V((angleCos * -xmodbef) - (angleSin *  ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos *  ymodbef) + ymod)
-				]))) {
-					collisions++;
-					if (collisions > 2) {
-						break;
-					}
-				}
+			if (this.collision(xA,yA,car.angle,car,cars)) {
+				collisions++;
 			}
 		}
 		
