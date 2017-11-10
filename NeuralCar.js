@@ -363,6 +363,7 @@ SQUARIFIC.Brain = function Brain (network, settings, neuralCarInstance) {
 			ymodAfter = car.y + height / 2,
 			angleCos = car.angleCos,
 			angleSin = car.angleSin;
+		// grid dots in front of car
 		for (var x = 0; x < xSteps; x++) {
 			for (var y = 0; y < ySteps; y++) {
 				var coords = [startX + x * xStep, startY + y * yStep];
@@ -390,10 +391,12 @@ SQUARIFIC.Brain = function Brain (network, settings, neuralCarInstance) {
 			for (var k = 0; k < carsLength; k++) {
 				carsCopy.push({car: cars[k]});
 			}
+			// sort by distance to the car
 			carsCopy.sort(function (a, b) {
 				if (!a.dis) {
 					var axdis = Math.abs(a.car.x - car.x),
 						aydis = Math.abs(a.car.y - car.y);
+					// wrap around
 					axdis = Math.min(axdis, board.width - axdis);
 					aydis = Math.min(aydis, board.height - aydis);
 					a.dis = Math.sqrt(axdis * axdis + aydis * aydis);
@@ -614,11 +617,17 @@ SQUARIFIC.Car = function Car (brain, settings) {
 			this.velocity = -average;
 		}
 		
-		this.x += this.velocity * this.angleSin * stepSize;
-		this.y -= this.velocity * this.angleCos * stepSize;
+		var nx,ny;
+		nx = this.x + this.velocity * this.angleSin * stepSize;
+		ny = this.y - this.velocity * this.angleCos * stepSize;
 		
-		this.x = board.ensureCoordInRange(this.x, board.width);
-		this.y = board.ensureCoordInRange(this.y, board.height);
+		nx = board.ensureCoordInRange(nx, board.width);
+		ny = board.ensureCoordInRange(ny, board.height);
+        
+        if (!board.collision(nx, ny, this, cars)) {
+        	this.x = nx;
+        	this.y = ny;
+        }
 
 		this.score += this.velocity;
 	};
@@ -718,26 +727,8 @@ SQUARIFIC.CarCollection = function CarCollection (carArray, settings, neuralCarI
 		}
 		neuralCarInstance.console.log("Generation #" + this.genNumber + ", best score: " + Math.round(topList[0].lastScore * 100) / 100 + ", runtime: " + Math.round((this.now - this.startTime) / 1000) + " seconds");
 	};
-	this.bestCar = function bestCar () {
-		var best;
-		for (var k = 0; k < carArray.length; k++) {
-			if ((typeof best !== "number" || carArray[best].score < carArray[k].score) && carArray[k].training) {
-				best = k;
-			}
-		}
-		return carArray[best];
-	};
-	this.removeWorst = function removeWorst () {
-		var worst;
-		for (var k = 0; k < carArray.length; k++) {
-			if ((typeof worst !== "number" || carArray[worst].lastScore > carArray[k].lastScore) && carArray[k].training) {
-				worst = k;
-			}
-		}
-		if (typeof k === "number") {
-			carArray.splice(k, 1);
-		}
-	};
+
+
 	this.getCars = function getCars () {
 		return carArray;
 	};
@@ -798,7 +789,36 @@ SQUARIFIC.Board = function Board (board, settings, neuralCarInstance) {
 		console.log("Unexisting x y requested: ", x, y);
 		return 0;
 	};
-	
+	this.getPolygon = function getPolygon(angleCos,angleSin,xmodbef,ymodbef,xmod,ymod) {
+		return new SAT.Polygon(new SAT.V(0, 0), [
+			new SAT.V((angleCos * -xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos * -ymodbef) + ymod),
+			new SAT.V((angleCos *  xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin *  xmodbef) + (angleCos * -ymodbef) + ymod), 
+			new SAT.V((angleCos *  xmodbef) - (angleSin *  ymodbef) + xmod, (angleSin *  xmodbef) + (angleCos *  ymodbef) + ymod),
+			new SAT.V((angleCos * -xmodbef) - (angleSin *  ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos *  ymodbef) + ymod)
+		]);
+	};
+	this.collision = function collisionDection(nx, ny, car, cars) {
+		var xmodbef = car.image.width / 2;
+		var ymodbef = car.image.height / 2;
+		var xmod = nx + xmodbef;
+		var ymod = ny + ymodbef;
+		// https://github.com/jriecken/sat-js
+		var carPolygon = this.getPolygon(car.angleCos,car.angleSin,xmodbef,ymodbef,xmod,ymod);
+		var carslength = cars.length;
+		for (var k = 0; k < carslength; k++) {
+			var angleCos = cars[k].angleCos;
+			var angleSin = cars[k].angleSin;
+			var xmodbef = cars[k].image.width / 2;
+			var ymodbef = cars[k].image.height / 2;
+			var xmod = cars[k].x + xmodbef;
+			var ymod = cars[k].y + ymodbef;
+			if (cars[k] !== car && SAT.testPolygonPolygon(carPolygon, 
+				this.getPolygon(angleCos,angleSin,xmodbef,ymodbef,xmod,ymod))) {
+				return true;
+			}
+		}
+		return false;
+	};
 	this.average = function average (xA, yA, width, height, xSteps, ySteps, car, cars) {
 		var pixels = [], collisions = 0;
 		xSteps = xSteps || 2;
@@ -838,6 +858,7 @@ SQUARIFIC.Board = function Board (board, settings, neuralCarInstance) {
 			var ymodbef = height / 2;
 			var xmod = xA + xmodbef;
 			var ymod = yA + ymodbef;
+			// https://github.com/jriecken/sat-js
 			var carPolygon = new SAT.Polygon(new SAT.V(0, 0), [
 				new SAT.V((angleCos * -xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos * -ymodbef) + ymod),
 				new SAT.V((angleCos *  xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin *  xmodbef) + (angleCos * -ymodbef) + ymod), 
