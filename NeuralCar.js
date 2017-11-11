@@ -291,6 +291,7 @@ SQUARIFIC.Brain = function Brain (network, settings, neuralCarInstance) {
 	};
 	
 	this.getInput = function getInput (car, board, cars) {
+		// input is blockVision()
 		var nodes = this[settings.ai.type](car, board, cars);
 		nodes = this.runNetwork(nodes, network);
 		
@@ -349,72 +350,66 @@ SQUARIFIC.Brain = function Brain (network, settings, neuralCarInstance) {
 		if (settings.debugging.drawVisionPixels) {
 			neuralCarInstance.screen.drawPixels(pixels, "#65BEC9", true);
 		}
-		
-		if (settings.collision) {
-			var carsCopy = [];
-			var carsLength = cars.length;
-			for (var k = 0; k < carsLength; k++) {
-				carsCopy.push({car: cars[k]});
-			}
-			// sort by distance to the car
-			carsCopy.sort(function (a, b) {
-				if (!a.dis) {
-					var axdis = Math.abs(a.car.x - car.x),
-						aydis = Math.abs(a.car.y - car.y);
-					// wrap around
-					axdis = Math.min(axdis, board.width - axdis);
-					aydis = Math.min(aydis, board.height - aydis);
-					a.dis = Math.sqrt(axdis * axdis + aydis * aydis);
-				}
-				if (!b.dis) {
-					var bxdis = Math.abs(b.car.x - car.x),
-						bydis = Math.abs(b.car.y - car.y);
-					bxdis = Math.min(bxdis, board.width - bxdis);
-					bydis = Math.min(bydis, board.height - bydis);
-					b.dis = Math.sqrt(bxdis * bxdis + bydis * bydis);
-				}
-				return a.dis - b.dis;
-			});
 
-			var carlength = Math.min(6, carsCopy.length);
-			for (var k = 1; k < carlength; k++) {
-				var axdis = carsCopy[k].car.x - car.x,
-					aydis = carsCopy[k].car.y - car.y;
-				var axdisa = board.width - Math.abs(axdis),
-					aydisa = board.height - Math.abs(aydis);
-				if (Math.abs(axdis) > axdisa) {
-					if (axdis < 0) {
-						axdis = axdisa;
-					} else {
-						axdis = -axdisa;
-					}
-				}
-				if (Math.abs(aydis) > aydisa) {
-					if (aydis < 0) {
-						aydis = aydisa;
-					} else {
-						aydis = -aydisa;
-					}
-				}
-				nodes.push(2 * (axdis) / board.width);
-				nodes.push(2 * (aydis) / board.height);
-				nodes.push((cars[k].angle % (Math.PI * 2)) / (Math.PI * 2));
-				nodes.push(cars[k].velocity / cars[k].maxSpeed);
-			}
-			for (; k < 6; k++) {
-				nodes.push(1);
-				nodes.push(1);
-				nodes.push(0);
-				nodes.push(0);
-			}
-			
-			nodes.push((car.angle % (Math.PI * 2)) / (Math.PI * 2));
-			nodes.push(car.velocity / car.maxSpeed);
-		} else {
-			for (var k = 0; k < 22; k++) {
-				nodes.push(0);
-			}
+		var carsCopy = [];
+		var carsLength = cars.length;
+		for (var k = 0; k < carsLength; k++) {
+			carsCopy.push({car: cars[k]});
 		}
+		// sort by distance to the car
+		carsCopy.sort(function (a, b) {
+			if (!a.dis) {
+				var axdis = Math.abs(a.car.x - car.x),
+					aydis = Math.abs(a.car.y - car.y);
+				// wrap around
+				axdis = Math.min(axdis, board.width - axdis);
+				aydis = Math.min(aydis, board.height - aydis);
+				a.dis = Math.sqrt(axdis * axdis + aydis * aydis);
+			}
+			if (!b.dis) {
+				var bxdis = Math.abs(b.car.x - car.x),
+					bydis = Math.abs(b.car.y - car.y);
+				bxdis = Math.min(bxdis, board.width - bxdis);
+				bydis = Math.min(bydis, board.height - bydis);
+				b.dis = Math.sqrt(bxdis * bxdis + bydis * bydis);
+			}
+			return a.dis - b.dis;
+		});
+
+		var carlength = Math.min(6, carsCopy.length);
+		for (var k = 1; k < carlength; k++) {
+			var axdis = carsCopy[k].car.x - car.x,
+				aydis = carsCopy[k].car.y - car.y;
+			var axdisa = board.width - Math.abs(axdis),
+				aydisa = board.height - Math.abs(aydis);
+			if (Math.abs(axdis) > axdisa) {
+				if (axdis < 0) {
+					axdis = axdisa;
+				} else {
+					axdis = -axdisa;
+				}
+			}
+			if (Math.abs(aydis) > aydisa) {
+				if (aydis < 0) {
+					aydis = aydisa;
+				} else {
+					aydis = -aydisa;
+				}
+			}
+			nodes.push(2 * (axdis) / board.width);
+			nodes.push(2 * (aydis) / board.height);
+			nodes.push((cars[k].angle % (Math.PI * 2)) / (Math.PI * 2));
+			nodes.push(cars[k].velocity / cars[k].maxSpeed);
+		}
+		for (; k < 6; k++) {
+			nodes.push(1);
+			nodes.push(1);
+			nodes.push(0);
+			nodes.push(0);
+		}
+		
+		nodes.push((car.angle % (Math.PI * 2)) / (Math.PI * 2));
+		nodes.push(car.velocity / car.maxSpeed);
 		
 		return nodes;
 	};
@@ -812,17 +807,18 @@ SQUARIFIC.Screen = function Screen (backCanvas, frontCanvas) {
 		}
 	};
 	this.drawCar = function (ctx, car) {
-		ctx.translate(car.x + car.image.width / 2, car.y + car.image.height / 2);
+		// assume x,y rotate at 1/4 head height, 1/2 width
+		ctx.translate(car.x + car.image.width / 2, car.y + car.image.height / 4);
 		ctx.rotate(car.angle);
-		ctx.drawImage(car.image, -car.image.width / 2, -car.image.height / 2);
+		ctx.drawImage(car.image, -car.image.width / 2, -car.image.height / 4);
 		// draw score
 		ctx.font='8px Arial';
 		ctx.rotate(Math.PI/2);
-		ctx.fillText(car.score.toPrecision(3).toString(),-10,3);
+		ctx.fillText(car.score.toPrecision(3).toString(),-2,3);
 		ctx.rotate(-Math.PI/2);
 		// restore draw position	
 		ctx.rotate(-car.angle);
-		ctx.translate(- car.x - car.image.width / 2, - car.y - car.image.height / 2);
+		ctx.translate(- car.x - car.image.width / 2, - car.y - car.image.height / 4);
 	}
 	this.drawBackground = function (board) {
 		backCanvas.width = board.width;
