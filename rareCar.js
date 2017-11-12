@@ -4,4 +4,4 @@ var car = new SQUARIFIC.Car(new SQUARIFIC.Brain(net, settings, SQUARIFIC.neuralC
 car.changeColor("pink");
 car.player = true;
 car.training = false;
-SQUARIFIC.neuralCar.carCollection.add(car)
+SQUARIFIC.neuralCar.carCollection.add(car);

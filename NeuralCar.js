@@ -1,30 +1,26 @@
 function collisionDection(nx, ny, nangle, car, cars) {
-		this.getPolygon = function getPolygon(angleCos,angleSin,xmodbef,ymodbef,xmod,ymod) {
-		return new SAT.Polygon(new SAT.V(0, 0), [
+		this.getPolygon = function getPolygon(angle,width,height,x,y) {
+		  var angleCos = Math.cos(nangle);
+		  var angleSin = Math.sin(nangle);
+		  var xmodbef = width / 2;
+		  var ymodbef = height / 2;
+		  var xmod = x + xmodbef;
+		  var ymod = y + ymodbef;
+		  return new SAT.Polygon(new SAT.V(0, 0), [
 			new SAT.V((angleCos * -xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos * -ymodbef) + ymod),
 			new SAT.V((angleCos *  xmodbef) - (angleSin * -ymodbef) + xmod, (angleSin *  xmodbef) + (angleCos * -ymodbef) + ymod), 
 			new SAT.V((angleCos *  xmodbef) - (angleSin *  ymodbef) + xmod, (angleSin *  xmodbef) + (angleCos *  ymodbef) + ymod),
 			new SAT.V((angleCos * -xmodbef) - (angleSin *  ymodbef) + xmod, (angleSin * -xmodbef) + (angleCos *  ymodbef) + ymod)
-			]);
+		  ]);
 		};
-		var xmodbef = car.image.width / 2;
-		var ymodbef = car.image.height / 2;
-		var xmod = nx + xmodbef;
-		var ymod = ny + ymodbef;
-		var nangleCos = Math.cos(nangle);
-		var nangleSin = Math.sin(nangle);
+
 		// https://github.com/jriecken/sat-js
-		var carPolygon = this.getPolygon(nangleCos,nangleSin,xmodbef,ymodbef,xmod,ymod);
-		var carslength = cars.length;
-		for (var k = 0; k < carslength; k++) {
-			var angleCos = Math.cos(cars[k].angle);
-			var angleSin = Math.sin(cars[k].angle);
-			var xmodbef = cars[k].image.width / 2;
-			var ymodbef = cars[k].image.height / 2;
-			var xmod = cars[k].x + xmodbef;
-			var ymod = cars[k].y + ymodbef;
-			if (cars[k] !== car && SAT.testPolygonPolygon(carPolygon, 
-				this.getPolygon(angleCos,angleSin,xmodbef,ymodbef,xmod,ymod))) {
+		for (var k = 0; k < cars.length; k++) {
+			var c = cars[k];
+			if (c==car) continue;
+  			var carPolygon = this.getPolygon(nangle,car.image.width,car.image.height,nx,ny);
+			if (SAT.testPolygonPolygon(carPolygon,
+				  this.getPolygon(c.angle,c.image.width,c.image.height,c.x,c.y))) {
 				return true;
 			}
 		}
@@ -132,15 +128,13 @@ SQUARIFIC.NeuralCar = function NeuralCar (backCanvas, frontCanvas, console, sett
 		settings.brain.inputStructure += 22;
 
 		settings.brain.structure = s.brain.structure || [42];
+		// last year, return acceleration and turning 
 		settings.brain.structure.push(2);
 		
 		this.runSpeed = parseFloat(s.runSpeed) || 1;
 	}
 	this.setSettings(settings);
 
-	//SQUARIFIC.RegexBrain.prototype = new SQUARIFIC.Brain({}, settings);
-
-	//setRegexBrainPrototype();
 	
 	this.console = new SQUARIFIC.Console(console);
 	this.board = new SQUARIFIC.Board(board, settings, this);
@@ -153,7 +147,9 @@ SQUARIFIC.NeuralCar = function NeuralCar (backCanvas, frontCanvas, console, sett
 		var playerCar = new SQUARIFIC.Car(new SQUARIFIC.PlayerInput(), settings);
 		playerCar.changeColor("brown");
 		this.carCollection.add(playerCar);
+		// rare car
 	}
+	this.carCollection.initCars(settings);
 	
 	this.lastUpdate = Date.now();
 	this.tooLong = 0;
@@ -207,21 +203,17 @@ SQUARIFIC.Brain = function Brain (network, settings, neuralCarInstance) {
 		var net = [];
 		for (var k = 0; k < settings.brain.structure.length; k++) {
 			net[k] = [];
-			for (var i = 0; i < parseInt(settings.brain.structure[k]); i++) {
+			if (!isNaN(parseInt(settings.brain.structure[k ]))) {
+				var nweights = parseInt(settings.brain.structure[k]);
+			} else {
+				nweights = settings.brain.inputStructure;
+			}
+			for (var i = 0; i < nweights; i++) {
 				var sign = Math.random() < 0.5 ? -1 : 1;
 				net[k][i] = {
 					bias: sign * Math.random(),
 					weights: []
 				};
-				if (!isNaN(parseInt(settings.brain.structure[k - 1]))) {
-					var weights = parseInt(settings.brain.structure[k - 1]);
-				} else {
-					weights = settings.brain.inputStructure;
-				}
-				sign = Math.random() < 0.5 ? -1 : 1;
-				for (var l = 0; l < weights; l++) {
-					net[k][i].weights[l] = sign * Math.random();
-				}
 			}
 		}
 		return net;
@@ -283,7 +275,13 @@ SQUARIFIC.Brain = function Brain (network, settings, neuralCarInstance) {
 	
 	this.outputFromNode = function outputFromNode (inputNodes, node) {
 		var sum = node.bias,
-			weightCount = node.weights.length;
+			weightCount = inputNodes.length;
+		if (node.weights.length == 0) {
+			sign = Math.random() < 0.5 ? -1 : 1;
+			for (var l = 0; l < weightCount; l++) {
+				node.weights[l] = sign * Math.random();
+			}
+		}
 		for (var weight = 0; weight < weightCount; weight++) {
 			sum += node.weights[weight] * inputNodes[weight];
 		}
@@ -398,8 +396,8 @@ SQUARIFIC.Brain = function Brain (network, settings, neuralCarInstance) {
 			}
 			nodes.push(2 * (axdis) / board.width);
 			nodes.push(2 * (aydis) / board.height);
-			nodes.push((cars[k].angle % (Math.PI * 2)) / (Math.PI * 2));
-			nodes.push(cars[k].velocity / cars[k].maxSpeed);
+			nodes.push(((cars[k].angle-car.angle) % (Math.PI * 2)) / (Math.PI * 2));
+			nodes.push((cars[k].velocity-car.velocity) / cars[k].maxSpeed);
 		}
 		for (; k < 6; k++) {
 			nodes.push(1);
@@ -482,7 +480,7 @@ SQUARIFIC.Car = function Car (brain, settings) {
 	this.maxSpeed = settings.car.maxSpeed;
 	this.x = Math.random() * settings.boardWidth;
 	this.y = Math.random() * settings.boardHeight;
-	this.angle = Math.random() * 2 * Math.PI;
+	this.angle = (Math.random()-0.5) * 2 * Math.PI;
 	this.color = settings.car.color || "red";
 	
 	this.image = document.createElement("canvas");
@@ -542,7 +540,7 @@ SQUARIFIC.Car = function Car (brain, settings) {
         } else {
         	score = 0;
         }
-       	this.angle = nangle;
+       	if (nvelocity != 0) this.angle = nangle;
        	this.velocity = nvelocity;
 		
 		if (this.velocity < 0) {
@@ -654,14 +652,16 @@ SQUARIFIC.CarCollection = function CarCollection (carArray, settings, neuralCarI
 	this.getCars = function getCars () {
 		return carArray;
 	};
-	for (var k = 0; k < settings.cars; k++) {
-		var c, r=false;
-		while (!r) {
-			c = new SQUARIFIC.Car(new SQUARIFIC.Brain(undefined, settings, neuralCarInstance),
-				settings);
-			// if return false, add failure due to collision, retry
-			r = this.add(c,true);	
-			console.log(k);	
+	this.initCars = function (settings) {
+		for (var k = 0; k < settings.cars; k++) {
+			var c, r=false;
+			while (!r) {
+				c = new SQUARIFIC.Car(new SQUARIFIC.Brain(undefined, settings, neuralCarInstance),
+					settings);
+				// if return false, add failure due to collision, retry
+				r = this.add(c,true);	
+				console.log(k);	
+			}
 		}
 	}
 };
@@ -841,6 +841,7 @@ SQUARIFIC.Screen = function Screen (backCanvas, frontCanvas) {
 		backCanvasCtx.putImageData(backCanvasImageData, 0, 0);
 	};
 };
+
 
 SQUARIFIC.Console = function Console (element) {
 	this.log = function log (m) {
